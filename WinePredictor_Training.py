@@ -1,121 +1,124 @@
 import findspark
+findspark.find()
 findspark.init()
 
-from pyspark import SparkConf
+from datetime import datetime
+from io import StringIO
+from pyspark import SparkConf, SparkContext
+from pyspark.ml import Pipeline
 from pyspark.ml.classification import DecisionTreeClassifier
-from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+from pyspark.ml.feature import StringIndexer, VectorIndexer, VectorAssembler
+from pyspark.ml.regression import LinearRegression
+from pyspark.mllib.evaluation import MulticlassMetrics
+from pyspark.mllib.linalg import Vectors
+from pyspark.mllib.regression import LabeledPoint, LinearRegressionWithSGD, LinearRegressionModel
+from pyspark.mllib.tree import RandomForest, RandomForestModel, DecisionTree
+from pyspark.mllib.util import MLUtils
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from pyspark.mllib.regression import LabeledPoint
-from pyspark.mllib.tree import RandomForest, DecisionTree
-from urllib.parse import urlparse
+from pyspark.sql.functions import col, when
+from pyspark.sql.session import SparkSession	
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score , f1_score
 import boto3
+import numpy as np
+import os
+import pandas as pd
+import pyspark
+import shutil
+import sys
+from urllib.parse import urlparse
 
 def main():
-    # Initialize Spark configuration and session
-    conf = SparkConf().setAppName('Wine Quality Training')
+
+    conf = SparkConf().setAppName('WineQuality Training')
     spark = SparkSession.builder.config(conf=conf).getOrCreate()
     sc = spark.sparkContext
     sc.setLogLevel("ERROR")
 
-    # S3 Paths
-    trainPath = "s3a://rr-programming-assignment-2/TrainingDataset.csv"
-    print(f"Importing: {trainPath}")
-
-    s3ModelPath = determine_model_path(trainPath)
-    print(f">>>> Model Path set: {s3ModelPath}")
-
-    # Load and preprocess training dataset
-    df_train = preprocess_training_data(spark, trainPath)
-
-    # Train and save Decision Tree model
-    print("Training DecisionTree model...")
-    model_dt = DecisionTree.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
-                                            impurity='gini', maxDepth=10, maxBins=32)
-    print("Model - DecisionTree Created")
-    save_model(sc, model_dt, s3ModelPath, "model_dt.model")
-
-    # Train and save Random Forest model
-    print("Training RandomForest model...")
-    model_rf = RandomForest.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
-                                            numTrees=10, featureSubsetStrategy="auto",
-                                            impurity='gini', maxDepth=10, maxBins=32)
-    print("Model - RandomForest Created")
-    save_model(sc, model_rf, s3ModelPath, "model_rf.model")
-
-    print("Data Training Completed")
-
-
-def determine_model_path(trainPath):
+    trainPath = "s3a://dataset-programming-assignment-2/TrainingDataset.csv"
+    print("Importing: " + trainPath)
+    
     if not trainPath.startswith("s3://"):
-        return "s3a://rr-programming-assignment-2/models"
-    return os.path.join(os.path.dirname(trainPath), "models")
+        s3ModelPath = "s3a://dataset-programming-assignment-2/models"
+    else: 
+        s3ModelPath = os.path.join(os.path.dirname(trainPath), "models")
+    print(">>>> Model Path set: " + s3ModelPath)
 
 
-def preprocess_training_data(spark, trainPath):
-    # Load data from S3
     df_train = spark.read.csv(trainPath, header=True, sep=";")
     df_train.printSchema()
     df_train.show()
 
-    # Rename columns
     df_train = df_train.withColumnRenamed('""""quality"""""', "myLabel")
     for column in df_train.columns:
         df_train = df_train.withColumnRenamed(column, column.replace('"', ''))
 
-    # Convert data types
     for idx, col_name in enumerate(df_train.columns):
         if idx not in [6 - 1, 7 - 1, len(df_train.columns) - 1]:
             df_train = df_train.withColumn(col_name, col(col_name).cast("double"))
         elif idx in [6 - 1, 7 - 1, len(df_train.columns) - 1]:
             df_train = df_train.withColumn(col_name, col(col_name).cast("integer"))
 
-    # Convert to RDD and LabeledPoint
     df_train = df_train.rdd.map(lambda row: LabeledPoint(row[-1], row[:-1]))
-    return df_train
 
+    print("Training DecisionTree model...")
+    model_dt = DecisionTree.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
+                                            impurity='gini', maxDepth=10, maxBins=32)
+    print("Model - DecisionTree Created")
 
-def save_model(sc, model, s3ModelPath, model_name):
-    model_path = os.path.join(s3ModelPath, model_name)
-    delete_existing_model(s3ModelPath, model_name)
-    model.save(sc, model_path)
-    print(f">>>>> Model saved at {model_path}")
+    model_path = s3ModelPath + "/model_dt.model"
+    s3_deleteAndOverwrite(model_path, "model_dt.model")
+    model_dt.save(sc, model_path)
 
+    print(">>>>> DecisionTree model saved")
 
-def delete_existing_model(model_path, targetFolderName):
-    bucket_name = get_bucket_name(model_path)
-    folder_path = f"models/{targetFolderName}"
-    if folder_exists(bucket_name, folder_path):
-        delete_directory(bucket_name, folder_path)
+    print("Training RandomForest model...")
+    model_rf = RandomForest.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
+                                    numTrees=10, featureSubsetStrategy="auto",
+                                    impurity='gini', maxDepth=10, maxBins=32)
+    print("Model - Randomforest Created")
+    
+    model_path = s3ModelPath + "/model_rf.model"
+    s3_deleteAndOverwrite(model_path, "model_rf.model")
+    model_rf.save(sc, model_path)
+
+    print("Model for Random Forest algorithm")
+    print("Data Training Completed")
+
+def s3_deleteAndOverwrite(model_path, targetFolderName): 
+    print(model_path)
+    print(targetFolderName)
+    pathTest = folder_exists(get_bucket_name(model_path), "models/"+ targetFolderName)
+    print(pathTest)
+    if (pathTest): 
+        delete_directory(get_bucket_name(model_path), "models/"+ targetFolderName)
+        
 
 
 def folder_exists(bucket_name, path_to_folder):
     try:
         s3 = boto3.client('s3')
-        res = s3.list_objects_v2(Bucket=bucket_name, Prefix=path_to_folder)
+        res = s3.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix=path_to_folder
+        )
         return 'Contents' in res
-    except Exception as e:
-        print(f"An error occurred while checking folder existence: {e}")
-        return False
-
+    except ClientError as e:
+        raise e
 
 def get_bucket_name(s3_path):
     try:
         return urlparse(s3_path).netloc
     except Exception as e:
-        print(f"An error occurred while parsing bucket name: {e}")
+        print(f"An error occurred: {e}")
         return None
 
 
-def delete_directory(bucket_name, folder_name):
-    try:
-        s3 = boto3.resource('s3')
-        bucket = s3.Bucket(bucket_name)
-        bucket.objects.filter(Prefix=folder_name).delete()
-        print(f">>>>> Pre-existing folder deleted: {folder_name}")
-    except Exception as e:
-        print(f"An error occurred while deleting the folder: {e}")
 
+def delete_directory(bucketName, folder_name):
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(bucketName)
+    bucket.objects.filter(Prefix=f"{folder_name}").delete()
+    print(">>>> Prexisting Folder Deleted: " + folder_name)
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
