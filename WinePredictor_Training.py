@@ -35,11 +35,11 @@ def main():
     sc = spark.sparkContext
     sc.setLogLevel("ERROR")
 
-    trainPath = "s3a://dataset-programming-assignment-2/TrainingDataset.csv"
+    trainPath = "s3a://rr-programming-assignment-2/TrainingDataset.csv"
     print("Importing: " + trainPath)
     
     if not trainPath.startswith("s3://"):
-        s3ModelPath = "s3a://dataset-programming-assignment-2/models"
+        s3ModelPath = "s3a://rr-programming-assignment-2/models"
     else: 
         s3ModelPath = os.path.join(os.path.dirname(trainPath), "models")
     print(">>>> Model Path set: " + s3ModelPath)
