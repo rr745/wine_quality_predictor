@@ -35,6 +35,12 @@ def main():
     sc = spark.sparkContext
     sc.setLogLevel("ERROR")
 
+    # Set S3 configuration for Hadoop 3.4.0
+    hadoopConf = sc._jsc.hadoopConfiguration()
+    hadoopConf.set("fs.s3a.aws.credentials.provider", "com.amazonaws.auth.InstanceProfileCredentialsProvider")
+    hadoopConf.set("fs.s3a.endpoint", "s3.amazonaws.com")
+    hadoopConf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+
     trainPath = "s3a://rr-programming-assignment-2/TrainingDataset.csv"
     print("Importing: " + trainPath)
     
