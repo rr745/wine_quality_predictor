@@ -13,13 +13,13 @@ import boto3
 
 def main():
     # Initialize Spark configuration and session
-    conf = SparkConf().setAppName('WineQuality Training')
+    conf = SparkConf().setAppName('Wine Quality Training')
     spark = SparkSession.builder.config(conf=conf).getOrCreate()
     sc = spark.sparkContext
     sc.setLogLevel("ERROR")
 
     # S3 Paths
-    trainPath = "s3a://dataset-programming-assignment-2/TrainingDataset.csv"
+    trainPath = "s3a://rr-programming-assignment-2/TrainingDataset.csv"
     print(f"Importing: {trainPath}")
 
     s3ModelPath = determine_model_path(trainPath)
@@ -48,7 +48,7 @@ def main():
 
 def determine_model_path(trainPath):
     if not trainPath.startswith("s3://"):
-        return "s3a://dataset-programming-assignment-2/models"
+        return "s3a://rr-programming-assignment-2/models"
     return os.path.join(os.path.dirname(trainPath), "models")
 
 
