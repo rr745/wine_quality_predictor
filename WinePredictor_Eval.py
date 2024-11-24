@@ -40,7 +40,7 @@ def sparkInit():
 
 def loadModels(sc):
     s3 = boto3.client('s3')
-    bucket_name = 'dataset-programming-assignment-2'
+    bucket_name = 'rr-programming-assignment-2'
     model_dt_path = "s3a://"+bucket_name+"/models/model_dt.model"
     model_rf_path = "s3a://"+bucket_name+"/models/model_rf.model"
 
@@ -53,7 +53,7 @@ def loadModels(sc):
     return model_dt, model_rf
 
 def loadCleanData(spark):
-    bucket_name = 'gayatriaavula-cs643'
+    bucket_name = 'rr-programming-assignment-2'
     file_key = "ValidationDataset.csv"
     dataset_path = "s3a://"+bucket_name+"/"+file_key
     validation = spark.read.csv(dataset_path, inferSchema=True, header=True, sep=';')
