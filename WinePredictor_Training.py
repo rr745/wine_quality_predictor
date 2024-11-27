@@ -1,130 +1,115 @@
-import findspark
-findspark.find()
-findspark.init()
+# Importing necessary libraries
 
-from datetime import datetime
-from io import StringIO
-from pyspark import SparkConf, SparkContext
-from pyspark.ml import Pipeline
-from pyspark.ml.classification import DecisionTreeClassifier
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator
-from pyspark.ml.feature import StringIndexer, VectorIndexer, VectorAssembler
-from pyspark.ml.regression import LinearRegression
-from pyspark.mllib.evaluation import MulticlassMetrics
-from pyspark.mllib.linalg import Vectors
-from pyspark.mllib.regression import LabeledPoint, LinearRegressionWithSGD, LinearRegressionModel
-from pyspark.mllib.tree import RandomForest, RandomForestModel, DecisionTree
-from pyspark.mllib.util import MLUtils
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, when
-from pyspark.sql.session import SparkSession	
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score , f1_score
-import boto3
-import numpy as np
-import os
-import pandas as pd
-import pyspark
-import shutil
 import sys
-from urllib.parse import urlparse
-
-def main():
-
-    conf = SparkConf().setAppName('WineQuality Training')
-    # .set("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    # .set("spark.hadoop.fs.s3a.access.key", "ASIA3DQOKN2LP7YR2ORG") \
-    # .set("spark.hadoop.fs.s3a.secret.key", "mJ96vhgii2V2O8zsVgI/B1rmQHMp/I+/sFn/rC68") \
-    # .set("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
-    # .set("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.2.0")
-    
-    spark = SparkSession.builder.config(conf=conf).getOrCreate()
-    sc = spark.sparkContext
-    sc.setLogLevel("ERROR")
-
-    trainPath = "s3a://rr-programming-assignment-2/TrainingDataset.csv"
-    print("Importing: " + trainPath)
-    
-    if not trainPath.startswith("s3://"):
-        s3ModelPath = "s3a://rr-programming-assignment-2/models"
-    else: 
-        s3ModelPath = os.path.join(os.path.dirname(trainPath), "models")
-    print(">>>> Model Path set: " + s3ModelPath)
-
-
-    df_train = spark.read.csv(trainPath, header=True, sep=";")
-    df_train.printSchema()
-    df_train.show()
-
-    df_train = df_train.withColumnRenamed('""""quality"""""', "myLabel")
-    for column in df_train.columns:
-        df_train = df_train.withColumnRenamed(column, column.replace('"', ''))
-
-    for idx, col_name in enumerate(df_train.columns):
-        if idx not in [6 - 1, 7 - 1, len(df_train.columns) - 1]:
-            df_train = df_train.withColumn(col_name, col(col_name).cast("double"))
-        elif idx in [6 - 1, 7 - 1, len(df_train.columns) - 1]:
-            df_train = df_train.withColumn(col_name, col(col_name).cast("integer"))
-
-    df_train = df_train.rdd.map(lambda row: LabeledPoint(row[-1], row[:-1]))
-
-    print("Training DecisionTree model...")
-    model_dt = DecisionTree.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
-                                            impurity='gini', maxDepth=10, maxBins=32)
-    print("Model - DecisionTree Created")
-
-    model_path = s3ModelPath + "/model_dt.model"
-    s3_deleteAndOverwrite(model_path, "model_dt.model")
-    model_dt.save(sc, model_path)
-
-    print(">>>>> DecisionTree model saved")
-
-    print("Training RandomForest model...")
-    model_rf = RandomForest.trainClassifier(df_train, numClasses=10, categoricalFeaturesInfo={},
-                                    numTrees=10, featureSubsetStrategy="auto",
-                                    impurity='gini', maxDepth=10, maxBins=32)
-    print("Model - Randomforest Created")
-    
-    model_path = s3ModelPath + "/model_rf.model"
-    s3_deleteAndOverwrite(model_path, "model_rf.model")
-    model_rf.save(sc, model_path)
-
-    print("Model for Random Forest algorithm")
-    print("Data Training Completed")
-
-def s3_deleteAndOverwrite(model_path, targetFolderName): 
-    print(model_path)
-    print(targetFolderName)
-    pathTest = folder_exists(get_bucket_name(model_path), "models/"+ targetFolderName)
-    print(pathTest)
-    if (pathTest): 
-        delete_directory(get_bucket_name(model_path), "models/"+ targetFolderName)
-        
-
-
-def folder_exists(bucket_name, path_to_folder):
-    try:
-        s3 = boto3.client('s3')
-        res = s3.list_objects_v2(
-            Bucket=bucket_name,
-            Prefix=path_to_folder
-        )
-        return 'Contents' in res
-    except ClientError as e:
-        raise e
-
-def get_bucket_name(s3_path):
-    try:
-        return urlparse(s3_path).netloc
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+from pyspark.sql import SparkSession
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.feature import StandardScaler
+from pyspark.ml import Pipeline
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+from pyspark.rdd import reduce
 
 
 
-def delete_directory(bucketName, folder_name):
-    s3 = boto3.resource('s3')
-    bucket = s3.Bucket(bucketName)
-    bucket.objects.filter(Prefix=f"{folder_name}").delete()
-    print(">>>> Prexisting Folder Deleted: " + folder_name)
+# Creating a spark session 
+spark = SparkSession.builder.master("local[*]").getOrCreate()
 
-if __name__ == "__main__": main()
+# Checking for commandline arguments passed
+# If a file is passed via commandline, use that for validation of the model
+# Else use the default validation file present inside the container
+
+if len(sys.argv) == 2:
+	filepn = "/job/"+ str(sys.argv[1])
+	data_test = spark.read.option("delimiter", ";").csv(filepn, header=True, inferSchema=True)
+	print("***********************************************************************")
+	print ("Argument passed is :", str(sys.argv[1]))
+	print("***********************************************************************")
+else:
+	data_test = spark.read.option("delimiter", ";").csv('ValidationDataset.csv', header=True, inferSchema=True)
+
+
+# Reading the training dataset locally stored in the container
+data_train = spark.read.option("delimiter", ";").csv('TrainingDataset.csv', header=True, inferSchema=True)
+
+#To clean out CSV headers if quotes are present
+old_column_name = data_train.schema.names
+print(data_train.schema)
+clean_column_name = []
+
+for name in old_column_name:
+    clean_column_name.append(name.replace('"',''))
+
+data_train = reduce(lambda data_train, idx: data_train.withColumnRenamed(old_column_name[idx], clean_column_name[idx]), range(len(clean_column_name)), data_train)
+data_test = reduce(lambda data_test, idx: data_test.withColumnRenamed(old_column_name[idx], clean_column_name[idx]), range(len(clean_column_name)), data_test)
+print(data_train.schema)
+
+# Dropping rows with quality equal to 3 because it contains very little data
+data_train_new = data_train.filter(data_train['quality'] != "3")
+
+
+# Selecting all columns except quality as feature columns from our train dataset
+feature_cols = [x for x in data_train_new.columns if x != "quality"]
+
+# Using a vector assembler for processing features
+vect_assembler = VectorAssembler(inputCols=feature_cols, outputCol="feature")
+
+# Using a standard scaler to remove mean and scale to unit variance for better model analysis
+Scaler = StandardScaler().setInputCol('feature').setOutputCol('Scaled_feature')
+
+# Using a logistic regression model for training 
+logr = LogisticRegression(labelCol = "quality", featuresCol = "Scaled_feature")
+
+# Creating a pipeline object of stages: [VectorAssmbler, StandardScaler, LogisticRegression]
+Pipe = Pipeline(stages=[vect_assembler, Scaler, logr])
+
+# Training the model with train dataset via Pipeline stages
+PipeModel = Pipe.fit(data_train_new)
+
+# Saving the Pipeline model results 
+PipeModel.write().overwrite().save("/job/Modelfile")
+
+# PGenerating predictions for Train and Validation datasets
+try: 
+	train_prediction = PipeModel.transform(data_train)
+	test_prediction = PipeModel.transform(data_test)
+except:
+	print("***********************************************************************")
+	print ("Please check CSV file :")
+	print("***********************************************************************")	
+
+# Creating a evaluator classification object to genertae metrics for predictions
+evaluator = MulticlassClassificationEvaluator(labelCol="quality", predictionCol = "prediction")
+
+
+# Calculating the F1 score of the model with Train and Validation datasets
+train_F1score = evaluator.evaluate(train_prediction, {evaluator.metricName: "f1"})
+test_F1score = evaluator.evaluate(test_prediction, {evaluator.metricName: "f1"})
+
+# Calculating the Accuracy of the model with Train and Validation datasets
+train_accuracy = evaluator.evaluate(train_prediction, {evaluator.metricName: "accuracy"})
+test_accuracy = evaluator.evaluate(test_prediction, {evaluator.metricName: "accuracy"})
+
+
+# Priting the metrics for the user to see
+print("***********************************************************************")
+print("++++++++++++++++++++++++++++++ Metrics ++++++++++++++++++++++++++++++++")
+print("***********************************************************************")
+print("[Train] F1 score = ", train_F1score)
+print("[Train] Accuracy = ", train_accuracy)
+print("***********************************************************************")
+print("[Test] F1 score = ", test_F1score)
+print("[Test] Accuracy = ", test_accuracy)
+print("***********************************************************************")
+
+# Save the results onto a Text File called results.txt
+fp = open("/job/results.txt", "w")
+fp.write("***********************************************************************\n")
+fp.write("[Train] F1 score =  %s\n" %train_F1score)
+fp.write("[Train] Accuracy = %s\n" %train_accuracy)
+fp.write("***********************************************************************\n")
+fp.write("[Test] F1 score =  %s\n" %test_F1score)
+fp.write("[Test] Accuracy =  %s\n" %test_accuracy)
+fp.write("***********************************************************************\n")
+
+# Closing the file
+fp.close()
