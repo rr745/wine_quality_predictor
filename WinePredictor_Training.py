@@ -11,8 +11,8 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 # File paths
-training_data_path = "/home/ec2-user/wine_quality_predictor/TrainingDataset.csv"
-validation_data_path = "/home/ec2-user/wine_quality_predictor/ValidationDataset.csv"
+training_data_path = "file:///home/ec2-user/wine_quality_predictor/TrainingDataset.csv"
+validation_data_path = "file:///home/ec2-user/wine_quality_predictor/ValidationDataset.csv"
 model_save_path = "/home/ec2-user/wine_quality_model"
 
 # Read datasets
