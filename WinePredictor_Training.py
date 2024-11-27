@@ -30,12 +30,12 @@ from urllib.parse import urlparse
 
 def main():
 
-    conf = SparkConf().setAppName('WineQuality Training') \
-    .set("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-    .set("spark.hadoop.fs.s3a.access.key", "ASIA3DQOKN2LP7YR2ORG") \
-    .set("spark.hadoop.fs.s3a.secret.key", "mJ96vhgii2V2O8zsVgI/B1rmQHMp/I+/sFn/rC68") \
-    .set("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
-    .set("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.2.0")
+    conf = SparkConf().setAppName('WineQuality Training')
+    # .set("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    # .set("spark.hadoop.fs.s3a.access.key", "ASIA3DQOKN2LP7YR2ORG") \
+    # .set("spark.hadoop.fs.s3a.secret.key", "mJ96vhgii2V2O8zsVgI/B1rmQHMp/I+/sFn/rC68") \
+    # .set("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
+    # .set("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.2.0")
     
     spark = SparkSession.builder.config(conf=conf).getOrCreate()
     sc = spark.sparkContext
