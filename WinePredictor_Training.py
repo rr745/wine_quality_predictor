@@ -25,11 +25,11 @@ if len(sys.argv) == 2:
 	print ("Argument passed is :", str(sys.argv[1]))
 	print("***********************************************************************")
 else:
-	data_test = spark.read.option("delimiter", ";").csv('ValidationDataset.csv', header=True, inferSchema=True)
+	data_test = spark.read.option("delimiter", ";").option("compression", "none").csv('ValidationDataset.csv', header=True, inferSchema=True)
 
 
 # Reading the training dataset locally stored in the container
-data_train = spark.read.option("delimiter", ";").csv('TrainingDataset.csv', header=True, inferSchema=True)
+data_train = spark.read.option("delimiter", ";").option("compression", "none").csv('TrainingDataset.csv', header=True, inferSchema=True)
 
 #To clean out CSV headers if quotes are present
 old_column_name = data_train.schema.names
